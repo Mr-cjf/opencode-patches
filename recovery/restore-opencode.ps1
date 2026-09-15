@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     OpenCode 一键恢复到 1.17.20 版本（含补丁 asar + 冻结自动更新）
 .DESCRIPTION
@@ -26,43 +26,43 @@ param(
 $ErrorActionPreference = "Continue"
 $script:ExitCode = 0
 
-# ---------- 甯搁噺 ----------
+# ---------- 常量 ----------
 $ReleaseBase   = "https://github.com/Mr-cjf/opencode-patches/releases/download/v1.17.20-patched-recovery/"
 $ExeFileName   = "opencode-desktop-win-x64-1.17.20.exe"
 $ZipFileName   = "app.asar.patched.zip"
 $ExpectedExeSize = 134784328
 $ExpectedZipSize = 39761484
 
-# ---------- 杈呭姪鍑芥暟 ----------
+# ---------- 辅助函数 ----------
 function Write-Step {
     param([string]$Prefix, [string]$Message)
     Write-Host "[${Prefix}] ${Message}"
 }
 
-# ---------- 涓嬭浇澶辫触鏃剁殑鎵嬪姩鎸囧紩 ----------
+# ---------- 下载失败时的手动指引 ----------
 function Show-ManualDownloadGuide {
     Write-Host ""
     Write-Host "============================================" -ForegroundColor Red
-    Write-Host "  鑷姩涓嬭浇澶辫触" -ForegroundColor Red
+    Write-Host "  自动下载失败" -ForegroundColor Red
     Write-Host "============================================" -ForegroundColor Red
     Write-Host ""
-    Write-Host "璇锋墜鍔ㄤ笅杞戒互涓嬫枃浠跺苟鏀惧叆鏈洰褰曪細" -ForegroundColor Yellow
+    Write-Host "请手动下载以下文件并放入本目录：" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  Release 椤甸潰:" -ForegroundColor Cyan
+    Write-Host "  Release 页面:" -ForegroundColor Cyan
     Write-Host "  https://github.com/Mr-cjf/opencode-patches/releases/tag/v1.17.20-patched-recovery"
     Write-Host ""
-    Write-Host "  闇€瑕佷笅杞界殑鏂囦欢:" -ForegroundColor Cyan
+    Write-Host "  需要下载的文件:" -ForegroundColor Cyan
     Write-Host "  1. ${ExeFileName}"
-    Write-Host "  2. ${ZipFileName}(鎴栬В鍘嬪悗鐨?app.asar.patched)"
+    Write-Host "  2. ${ZipFileName}(或解压后的 app.asar.patched)"
     Write-Host ""
-    Write-Host "  涓嬭浇鍚庢斁鍒颁互涓嬬洰褰?" -ForegroundColor Cyan
+    Write-Host "  下载后放到以下目录" -ForegroundColor Cyan
     Write-Host "  $PSScriptRoot"
     Write-Host ""
-    Write-Host "  鐒跺悗閲嶆柊杩愯鏈剼鏈?鎴栧姞 -SkipDownload 鍙傛暟璺宠繃涓嬭浇妫€鏌?"
+    Write-Host "  然后重新运行本脚本，或加 -SkipDownload 参数跳过下载检查"
     Write-Host ""
 }
 
-# ---------- 涓嬭浇鍗曚釜鏂囦欢锛堝绾у洖閫€锛歡h -> IWR -> curl -> 鎵嬪姩锛?---------
+# ---------- 下载单个文件（多级回退：gh -> IWR -> curl -> 手动）---------
 function Download-File {
     param(
         [string]$Url,
@@ -74,59 +74,59 @@ function Download-File {
         [string]$FileName
     )
 
-    Write-Host "  涓嬭浇鍦板潃: ${Url}" -ForegroundColor Gray
-    Write-Host "  淇濆瓨浣嶇疆: ${Destination}" -ForegroundColor Gray
+    Write-Host "  下载地址: ${Url}" -ForegroundColor Gray
+    Write-Host "  保存位置: ${Destination}" -ForegroundColor Gray
 
     $success = $false
 
-    # ----- 鏂规硶1: gh CLI锛堥閫夛細缁曡繃 DNS/鐩磋繛闃绘柇锛?----
+    # ----- 方法1: gh CLI（首选：绕过 DNS/直连阻断）----
     if (Get-Command gh -ErrorAction SilentlyContinue) {
         try {
-            Write-Host "  灏濊瘯鏂规硶1[gh release download] ..." -ForegroundColor Gray
+            Write-Host "  尝试方法1[gh release download] ..." -ForegroundColor Gray
             if (-not $env:GH_TOKEN -and $env:GITHUB_PERSONAL_ACCESS_TOKEN) { $env:GH_TOKEN = $env:GITHUB_PERSONAL_ACCESS_TOKEN }
             & gh release download $ReleaseTag --repo $Repo --pattern $FileName --dir (Split-Path $Destination -Parent) --clobber 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0 -and (Test-Path $Destination)) {
                 $success = $true
-                Write-Step "涓嬭浇" "鏂规硶1鎴愬姛: ${Description}锛坓h CLI锛?
+                Write-Step "下载" "方法1成功: ${Description}（gh CLI）"
             } else {
-                Write-Host "  鏂规硶1澶辫触 (gh exit code: ${LASTEXITCODE})" -ForegroundColor DarkYellow
+                Write-Host "  方法1失败 (gh exit code: ${LASTEXITCODE})" -ForegroundColor DarkYellow
             }
         } catch {
-            Write-Host "  鏂规硶1[gh] 澶辫触: $_" -ForegroundColor DarkYellow
+            Write-Host "  方法1[gh] 失败: $_" -ForegroundColor DarkYellow
         }
     } else {
-        Write-Host "  鏂规硶1[gh CLI] 涓嶅彲鐢紙鏈畨瑁?gh锛夛紝璺宠繃銆? -ForegroundColor DarkYellow
+        Write-Host "  方法1[gh CLI] 不可用（未安装 gh），跳过。" -ForegroundColor DarkYellow
     }
 
-    # ----- 鏂规硶2: Invoke-WebRequest -----
+    # ----- 方法2: Invoke-WebRequest -----
     if (-not $success) {
         try {
             $oldProgress = $ProgressPreference
             $ProgressPreference = 'SilentlyContinue'
-            Write-Host "  灏濊瘯鏂规硶2[PowerShell Invoke-WebRequest] ..." -ForegroundColor Gray
+            Write-Host "  尝试方法2[PowerShell Invoke-WebRequest] ..." -ForegroundColor Gray
             Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -ErrorAction Stop
             $ProgressPreference = $oldProgress
             $success = $true
-            Write-Step "涓嬭浇" "鏂规硶2鎴愬姛: ${Description}"
+            Write-Step "下载" "方法2成功: ${Description}"
         } catch {
             $ProgressPreference = $oldProgress
-            Write-Host "  鏂规硶2[IWR] 澶辫触: $_" -ForegroundColor DarkYellow
+            Write-Host "  方法2[IWR] 失败: $_" -ForegroundColor DarkYellow
         }
     }
 
-    # ----- 鏂规硶3: curl.exe -----
+    # ----- 方法3: curl.exe -----
     if (-not $success) {
         try {
-            Write-Host "  灏濊瘯鏂规硶3[curl.exe] ..." -ForegroundColor Gray
+            Write-Host "  尝试方法3[curl.exe] ..." -ForegroundColor Gray
             $null = & curl.exe -L -o "$Destination" "$Url" 2>&1
             if ($LASTEXITCODE -eq 0 -and (Test-Path $Destination)) {
                 $success = $true
-                Write-Step "涓嬭浇" "鏂规硶3鎴愬姛: ${Description}"
+                Write-Step "下载" "方法3成功: ${Description}"
             } else {
-                Write-Host "  鏂规硶3[curl] 澶辫触 (exit code: ${LASTEXITCODE})" -ForegroundColor DarkYellow
+                Write-Host "  方法3[curl] 失败 (exit code: ${LASTEXITCODE})" -ForegroundColor DarkYellow
             }
         } catch {
-            Write-Host "  鏂规硶3[curl] 澶辫触: $_" -ForegroundColor DarkYellow
+            Write-Host "  方法3[curl] 失败: $_" -ForegroundColor DarkYellow
         }
     }
 
@@ -135,28 +135,28 @@ function Download-File {
         return $false
     }
 
-    # ----- 鏍￠獙澶у皬 -----
+    # ----- 校验大小 -----
     if (Test-Path $Destination) {
         $actualSize = (Get-Item $Destination).Length
         if ($ExpectedSize -gt 0 -and $actualSize -ne $ExpectedSize) {
-            Write-Host "[璀﹀憡] 鏂囦欢澶у皬涓嶅尮閰? 鏈熸湜 ${ExpectedSize} 瀛楄妭, 瀹為檯 ${actualSize} 瀛楄妭" -ForegroundColor Red
-            Write-Host "  涓嬭浇鍙兘涓嶅畬鏁淬€傚皢涓柇鎿嶄綔銆? -ForegroundColor Red
+            Write-Host "[警告] 文件大小不匹配：期望 ${ExpectedSize} 字节，实际 ${actualSize} 字节" -ForegroundColor Red
+            Write-Host "  下载可能不完整，将中断操作。" -ForegroundColor Red
             return $false
         } else {
-            Write-Step "涓嬭浇" "澶у皬楠岃瘉閫氳繃 ($actualSize 瀛楄妭)"
+            Write-Step "下载" "大小验证通过 ($actualSize 字节)"
         }
     }
 
     return $true
 }
-# ---------- 鑷姩涓嬭浇缂哄け璧勪骇 ----------
+# ---------- 自动下载缺失资产 ----------
 function Invoke-AutoDownload {
     if ($SkipDownload) {
-        Write-Step "涓嬭浇" "宸茶烦杩囦笅杞?-SkipDownload 鍙傛暟)"
+        Write-Step "下载" "已跳过下载（-SkipDownload 参数）"
         return
     }
 
-    Write-Step "涓嬭浇" "妫€鏌ョ己澶辫祫浜ф枃浠?.."
+    Write-Step "下载" "检查缺失资产文件..."
 
     $exePath     = "$PSScriptRoot\$ExeFileName"
     $patchedPath = "$PSScriptRoot\app.asar.patched"
@@ -165,56 +165,56 @@ function Invoke-AutoDownload {
     $needExe = -not (Test-Path $exePath)
     $needZip = (-not (Test-Path $patchedPath)) -and (-not (Test-Path $zipPath))
 
-    if ($needExe)   { Write-Host "  缂哄け: ${ExeFileName}" -ForegroundColor Yellow }  else { Write-Host "  瀛樺湪: ${ExeFileName}" -ForegroundColor Green }
-    if ($needZip)   { Write-Host "  缂哄け: ${ZipFileName}(鎴?app.asar.patched)" -ForegroundColor Yellow }
-    elseif (-not (Test-Path $patchedPath)) { Write-Host "  瀛樺湪: ${ZipFileName}" -ForegroundColor Green }
-    else                                   { Write-Host "  瀛樺湪: app.asar.patched" -ForegroundColor Green }
+    if ($needExe)   { Write-Host "  缺失: ${ExeFileName}" -ForegroundColor Yellow }  else { Write-Host "  存在: ${ExeFileName}" -ForegroundColor Green }
+    if ($needZip)   { Write-Host "  缺失: ${ZipFileName}(或 app.asar.patched)" -ForegroundColor Yellow }
+    elseif (-not (Test-Path $patchedPath)) { Write-Host "  存在: ${ZipFileName}" -ForegroundColor Green }
+    else                                   { Write-Host "  存在: app.asar.patched" -ForegroundColor Green }
 
     if (-not $needExe -and -not $needZip) {
-        Write-Step "涓嬭浇" "鎵€鏈夎祫浜ф枃浠跺凡瀛樺湪銆?
+        Write-Step "下载" "所有资产文件已存在。"
         return
     }
 
     if (-not $Yes) {
         Write-Host ""
-        Write-Host "[纭] 灏嗚嚜鍔ㄤ笅杞界己澶辨枃浠讹紝鏄惁缁х画锛?y/N): " -NoNewline
+        Write-Host "[确认] 将自动下载缺失文件，是否继续？(y/N): " -NoNewline
         $answer = Read-Host
         if ($answer -notin @('y', 'Y', 'yes', 'YES')) {
-            Write-Host "[鍙栨秷] 鐢ㄦ埛鍙栨秷浜嗕笅杞姐€?
+            Write-Host "[取消] 用户取消了下载。"
             Show-ManualDownloadGuide
             exit 1
         }
     }
 
-    Write-Step "涓嬭浇" "寮€濮嬩笅杞?.."
+    Write-Step "下载" "开始下载..."
     $oldPp = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
 
     if ($needExe) {
-        Write-Step "涓嬭浇" "姝ｅ湪涓嬭浇 ${ExeFileName}..."
+        Write-Step "下载" "正在下载 ${ExeFileName}..."
         if (-not (Download-File -Url "${ReleaseBase}${ExeFileName}" -Destination $exePath -Description $ExeFileName -ExpectedSize $ExpectedExeSize -FileName $ExeFileName)) { exit 1 }
     }
 
     if ($needZip) {
-        Write-Step "涓嬭浇" "姝ｅ湪涓嬭浇 ${ZipFileName}..."
+        Write-Step "下载" "正在下载 ${ZipFileName}..."
         if (-not (Download-File -Url "${ReleaseBase}${ZipFileName}" -Destination $zipPath -Description $ZipFileName -ExpectedSize $ExpectedZipSize -FileName $ZipFileName)) { exit 1 }
     }
 
     $ProgressPreference = $oldPp
-    Write-Step "涓嬭浇" "鍏ㄩ儴涓嬭浇瀹屾垚銆?
+    Write-Step "下载" "全部下载完成。"
 }
 
-# ---------- 鍝堝笇鏍￠獙 ----------
+# ---------- 哈希校验 ----------
 function Invoke-HashCheck {
-    Write-Step "鏍￠獙" "姝ｅ湪鏍￠獙鏂囦欢鍝堝笇鍊?.."
+    Write-Step "校验" "正在校验文件哈希值..."
 
     $checksumFile = "$PSScriptRoot\checksums.txt"
     if (-not (Test-Path $checksumFile)) {
-        Write-Step "鏍￠獙" "鏈壘鍒?checksums.txt锛岃烦杩囧搱甯屾牎楠屻€?
+        Write-Step "校验" "未找到 checksums.txt，跳过哈希校验。"
         return $true
     }
 
-    # 瑙ｆ瀽 checksums.txt(鏍煎紡: <64hex> *<filename>)
+    # 解析 checksums.txt（格式: <64hex> *<filename>）
     $checksums = @{}
     Get-Content $checksumFile | ForEach-Object {
         if ($_ -match '^([a-fA-F0-9]{64})\s+\*(.+)$') {
@@ -224,62 +224,62 @@ function Invoke-HashCheck {
 
     $allValid = $true
 
-    # 鏍￠獙 exe
+    # 校验 exe
     $exePath = "$PSScriptRoot\$ExeFileName"
     if (Test-Path $exePath) {
         $hash = (Get-FileHash $exePath -Algorithm SHA256).Hash.ToLower()
         $expected = $checksums[$ExeFileName]
-        Write-Step "鏍￠獙" "妫€鏌?${ExeFileName}..."
+        Write-Step "校验" "检查 ${ExeFileName}..."
         if ($expected) {
             if ($hash -eq $expected) {
-                Write-Host "  鍝堝笇鍖归厤: ${hash}" -ForegroundColor Green
+                Write-Host "  哈希匹配: ${hash}" -ForegroundColor Green
             } else {
-                Write-Host "  鍝堝笇涓嶅尮閰?" -ForegroundColor Red
-                Write-Host "  鏈熸湜: ${expected}" -ForegroundColor Red
-                Write-Host "  瀹為檯: ${hash}" -ForegroundColor Red
+                Write-Host "  哈希不匹配" -ForegroundColor Red
+                Write-Host "  期望: ${expected}" -ForegroundColor Red
+                Write-Host "  实际: ${hash}" -ForegroundColor Red
                 $allValid = $false
             }
         } else {
-            Write-Host "  鏈湪 checksums.txt 涓壘鍒?${ExeFileName} 鐨勫搱甯岋紝璺宠繃鏍￠獙銆? -ForegroundColor Yellow
+            Write-Host "  未在 checksums.txt 中找到 ${ExeFileName} 的哈希，跳过校验。" -ForegroundColor Yellow
         }
     }
 
-    # 鏍￠獙 zip
+    # 校验 zip
     $zipPath = "$PSScriptRoot\$ZipFileName"
     if (Test-Path $zipPath) {
         $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
         $expected = $checksums[$ZipFileName]
-        Write-Step "鏍￠獙" "妫€鏌?${ZipFileName}..."
+        Write-Step "校验" "检查 ${ZipFileName}..."
         if ($expected) {
             if ($hash -eq $expected) {
-                Write-Host "  鍝堝笇鍖归厤: ${hash}" -ForegroundColor Green
+                Write-Host "  哈希匹配: ${hash}" -ForegroundColor Green
             } else {
-                Write-Host "  鍝堝笇涓嶅尮閰?" -ForegroundColor Red
-                Write-Host "  鏈熸湜: ${expected}" -ForegroundColor Red
-                Write-Host "  瀹為檯: ${hash}" -ForegroundColor Red
+                Write-Host "  哈希不匹配" -ForegroundColor Red
+                Write-Host "  期望: ${expected}" -ForegroundColor Red
+                Write-Host "  实际: ${hash}" -ForegroundColor Red
                 $allValid = $false
             }
         } else {
-            Write-Host "  鏈湪 checksums.txt 涓壘鍒?${ZipFileName} 鐨勫搱甯岋紝璺宠繃鏍￠獙銆? -ForegroundColor Yellow
+            Write-Host "  未在 checksums.txt 中找到 ${ZipFileName} 的哈希，跳过校验。" -ForegroundColor Yellow
         }
     }
 
     if (-not $allValid) {
         Write-Host ""
-        Write-Host "[閿欒] 鏂囦欢鍝堝笇鏍￠獙澶辫触锛佽浠?Release 閲嶆柊涓嬭浇鏂囦欢銆? -ForegroundColor Red
+        Write-Host "[错误] 文件哈希校验失败！请从 Release 重新下载文件。" -ForegroundColor Red
         Write-Host "  Release: https://github.com/Mr-cjf/opencode-patches/releases/tag/v1.17.20-patched-recovery" -ForegroundColor Cyan
         exit 1
     }
 
-    Write-Step "鏍￠獙" "鎵€鏈夋枃浠跺搱甯屾牎楠岄€氳繃銆?
+    Write-Step "校验" "所有文件哈希校验通过。"
     return $true
 }
 
-# ---------- 鏁版嵁搴撲慨澶嶈仈鍔?----------
+# ---------- 数据库修复联动 ----------
 function Invoke-DatabaseFix {
-    Write-Step "鏁版嵁搴? "鍑嗗淇鏁版嵁搴?time 瀛楁..."
+    Write-Step "数据库" "准备修复数据库 time 字段..."
 
-    # 妫€娴?python
+    # 检测 python
     $pythonCmd = $null
     try { $null = & python --version 2>&1; if ($LASTEXITCODE -eq 0) { $pythonCmd = "python" } } catch {}
     if (-not $pythonCmd) {
@@ -287,71 +287,72 @@ function Invoke-DatabaseFix {
     }
 
     if (-not $pythonCmd) {
-        Write-Host "[閿欒] 鏈壘鍒?Python銆傝鎵嬪姩杩愯: python fix-db-time-fields.py" -ForegroundColor Red
+        Write-Host "[错误] 未找到 Python。请手动运行: python fix-db-time-fields.py" -ForegroundColor Red
         return
     }
 
     $fixScript = "$PSScriptRoot\fix-db-time-fields.py"
     if (-not (Test-Path $fixScript)) {
-        Write-Host "[閿欒] 鏈壘鍒颁慨澶嶈剼鏈? ${fixScript}" -ForegroundColor Red
+        Write-Host "[错误] 未找到修复脚本 ${fixScript}" -ForegroundColor Red
         return
     }
 
-    Write-Step "鏁版嵁搴? "鎵惧埌 Python锛屾墽琛?dry-run 棰勮..."
+    Write-Step "数据库" "找到 Python，执行 dry-run 预览..."
 
-    # 鍏?dry-run 棰勮
+    # 先 dry-run 预览
     & $pythonCmd "$fixScript" --dry-run
     $dryRunExit = $LASTEXITCODE
     if ($dryRunExit -ne 0) {
-        Write-Host "[璀﹀憡] dry-run 澶辫触(exit code: ${dryRunExit})锛岃烦杩囨暟鎹簱淇銆? -ForegroundColor Yellow
+        Write-Host "[警告] dry-run 失败（exit code: ${dryRunExit}），跳过数据库修复。" -ForegroundColor Yellow
         return
     }
 
-    # 璇㈤棶纭
+    # 询问确认
     if (-not $Yes) {
         Write-Host ""
-        Write-Host "[纭] 浠ヤ笂涓洪瑙堢粨鏋溿€傛槸鍚︾户缁墽琛屼慨澶嶏紵(y/N): " -NoNewline
+        Write-Host "[确认] 以上为预览结果。是否继续执行修复？(y/N): " -NoNewline
         $answer = Read-Host
         if ($answer -notin @('y', 'Y', 'yes', 'YES')) {
-            Write-Host "[鍙栨秷] 鐢ㄦ埛鍙栨秷浜嗘暟鎹簱淇銆? -ForegroundColor Yellow
+            Write-Host "[取消] 用户取消了数据库修复。" -ForegroundColor Yellow
             return
         }
     } else {
-        Write-Step "鏁版嵁搴? "-Yes 宸叉寚瀹氾紝璺宠繃纭銆?
+        Write-Step "数据库" "-Yes 已指定，跳过确认。"
     }
 
-    # 鎵ц淇
-    Write-Step "鏁版嵁搴? "鎵ц淇..."
+    # 执行修复
+    Write-Step "数据库" "执行修复..."
     if ($Yes) {
         & $pythonCmd "$fixScript" --yes
     } else {
         & $pythonCmd "$fixScript"
     }
     if ($LASTEXITCODE -eq 0) {
-        Write-Step "鏁版嵁搴? "鏁版嵁搴撲慨澶嶅畬鎴愩€?
+        Write-Step "数据库" "数据库修复完成。"
     } else {
-        Write-Host "[璀﹀憡] 鏁版嵁搴撲慨澶嶅紓甯?exit code: ${LASTEXITCODE})" -ForegroundColor Yellow
+        Write-Host "[警告] 数据库修复异常（exit code: ${LASTEXITCODE}）" -ForegroundColor Yellow
     }
 }
 
 # ============================================================
-#  涓绘祦绋?# ============================================================
+#  主流程
+# ============================================================
 
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host "   OpenCode 涓€閿仮澶嶅伐鍏?v2.0" -ForegroundColor Cyan
-Write-Host "   鐩爣鐗堟湰: 1.17.20(鍚ˉ涓?" -ForegroundColor Cyan
+Write-Host "   OpenCode 一键恢复工具 v2.0" -ForegroundColor Cyan
+Write-Host "   目标版本: 1.17.20（含补丁）" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ---- 绗?姝ワ細鑷姩涓嬭浇缂哄け璧勪骇 ----
+# ---- 第 1 步：自动下载缺失资产 ----
 Invoke-AutoDownload
 
-# ---- 绗?姝ュ悗锛氬搱甯屾牎楠?----
+# ---- 第 1 步后：哈希校验 ----
 Invoke-HashCheck
 
-# ---------- 姝ラ 1锛氬叧闂?OpenCode ----------
-Write-Step "1/6" "姝ｅ湪鍏抽棴 OpenCode 杩涚▼..."
+# ---------- 步骤 1：关闭 OpenCode ----------
+Write-Step "1/6" "正在关闭 OpenCode 进程..."
 
 $procs = Get-Process -Name "*opencode*" -ErrorAction SilentlyContinue
 if ($procs) {
@@ -359,43 +360,43 @@ if ($procs) {
     Start-Sleep -Seconds 3
     $remaining = Get-Process -Name "*opencode*" -ErrorAction SilentlyContinue
     if ($remaining) {
-        Write-Host "[閿欒] OpenCode 杩涚▼鏈兘瀹屽叏鍏抽棴锛岃鎵嬪姩缁撴潫鍚庨噸璇曘€? -ForegroundColor Red
+        Write-Host "[错误] OpenCode 进程未能完全关闭，请手动结束后重试。" -ForegroundColor Red
         exit 1
     }
-    Write-Step "1/6" "OpenCode 宸插叧闂€?
+    Write-Step "1/6" "OpenCode 已关闭。"
 } else {
-    Write-Step "1/6" "鏈娴嬪埌杩愯涓殑 OpenCode 杩涚▼銆?
+    Write-Step "1/6" "未检测到运行中的 OpenCode 进程。"
 }
 
-# ---------- 姝ラ 2锛氬嵏杞藉綋鍓嶇増鏈?----------
-Write-Step "2/6" "鍗歌浇褰撳墠 OpenCode 鐗堟湰..."
+# ---------- 步骤 2：卸载当前版本 ----------
+Write-Step "2/6" "卸载当前 OpenCode 版本..."
 
 $uninstaller = "$env:LOCALAPPDATA\Programs\@opencode-aidesktop\Uninstall OpenCode.exe"
 if (Test-Path $uninstaller) {
-    Write-Step "2/6" "鎵惧埌鍗歌浇绋嬪簭锛屾鍦ㄦ墽琛岄潤榛樺嵏杞?.."
+    Write-Step "2/6" "找到卸载程序，正在执行静默卸载..."
     Start-Process -Wait -FilePath $uninstaller -ArgumentList "/S" -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 5
-    Write-Step "2/6" "鍗歌浇瀹屾垚銆?
+    Write-Step "2/6" "卸载完成。"
 } else {
-    Write-Step "2/6" "鏈壘鍒板嵏杞界▼搴?鍙兘宸插嵏杞芥垨鏈畨瑁?锛岀户缁笅涓€姝ャ€?
+    Write-Step "2/6" "未找到卸载程序（可能已卸载或未安装），继续下一步。"
 }
 
-# ---------- 姝ラ 3锛氬畨瑁?1.17.20 ----------
-Write-Step "3/6" "瀹夎 OpenCode 1.17.20..."
+# ---------- 步骤 3：安装 1.17.20 ----------
+Write-Step "3/6" "安装 OpenCode 1.17.20..."
 
 $installer = "$PSScriptRoot\opencode-desktop-win-x64-1.17.20.exe"
 if (-not (Test-Path $installer)) {
-    Write-Host "[閿欒] 瀹夎鍖呬笉瀛樺湪: ${installer}" -ForegroundColor Red
+    Write-Host "[错误] 安装包不存在: ${installer}" -ForegroundColor Red
     exit 1
 }
 
-Write-Step "3/6" "姝ｅ湪杩愯瀹夎绋嬪簭(闈欓粯妯″紡)..."
+Write-Step "3/6" "正在运行安装程序（静默模式）..."
 Start-Process -Wait -FilePath $installer -ArgumentList "/S" -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 5
-Write-Step "3/6" "瀹夎瀹屾垚銆?
+Write-Step "3/6" "安装完成。"
 
-# ---------- 姝ラ 4锛氬簲鐢ㄨˉ涓?asar ----------
-Write-Step "4/6" "搴旂敤琛ヤ竵 app.asar..."
+# ---------- 步骤 4：应用补丁 asar ----------
+Write-Step "4/6" "应用补丁 app.asar..."
 
 $resourcesDir = "$env:LOCALAPPDATA\Programs\@opencode-aidesktop\resources"
 $targetAsar = "$resourcesDir\app.asar"
@@ -404,34 +405,34 @@ $patchedFile = "$PSScriptRoot\app.asar.patched"
 $zipFile = "$PSScriptRoot\app.asar.patched.zip"
 
 if (-not (Test-Path $resourcesDir)) {
-    Write-Host "[閿欒] 鏈壘鍒?OpenCode 璧勬簮鐩綍: ${resourcesDir}" -ForegroundColor Red
+    Write-Host "[错误] 未找到 OpenCode 资源目录: ${resourcesDir}" -ForegroundColor Red
     exit 1
 }
 
 if ((-not (Test-Path $patchedFile)) -and (Test-Path $zipFile)) {
-    Write-Step "4/6" "瑙ｅ帇 app.asar.patched.zip..."
+    Write-Step "4/6" "解压 app.asar.patched.zip..."
     Expand-Archive -Path $zipFile -DestinationPath "$PSScriptRoot" -Force -ErrorAction SilentlyContinue
     $patchedFile = "$PSScriptRoot\app.asar.patched"
 }
 
 if (-not (Test-Path $patchedFile)) {
-    Write-Host "[閿欒] 鏈壘鍒拌ˉ涓佹枃浠?app.asar.patched 鎴?app.asar.patched.zip" -ForegroundColor Red
+    Write-Host "[错误] 未找到补丁文件 app.asar.patched 或 app.asar.patched.zip" -ForegroundColor Red
     exit 1
 }
 
 if (Test-Path $targetAsar) {
     $backupAsar = "$targetAsar.pre-restore.bak"
     Copy-Item -Path $targetAsar -Destination $backupAsar -Force -ErrorAction SilentlyContinue
-    Write-Step "4/6" "宸插浠藉師 app.asar -> app.asar.pre-restore.bak"
+    Write-Step "4/6" "已备份原 app.asar -> app.asar.pre-restore.bak"
 }
 
 Copy-Item -Path $patchedFile -Destination $targetAsar -Force -ErrorAction SilentlyContinue
-Write-Step "4/6" "琛ヤ竵宸插簲鐢ㄣ€?
+Write-Step "4/6" "补丁已应用。"
 
-# ---------- 姝ラ 5锛氬喕缁撹嚜鍔ㄥ崌绾?----------
-Write-Step "5/6" "鍐荤粨鑷姩鍗囩骇..."
+# ---------- 步骤 5：冻结自动升级 ----------
+Write-Step "5/6" "冻结自动升级..."
 
-# 5a. 淇敼 app-update.yml
+# 5a. 修改 app-update.yml
 $updateYmlPath = "$resourcesDir\app-update.yml"
 if (Test-Path $updateYmlPath) {
     $content = Get-Content $updateYmlPath -Raw -ErrorAction SilentlyContinue
@@ -439,66 +440,66 @@ if (Test-Path $updateYmlPath) {
         Copy-Item -Path $updateYmlPath -Destination "$updateYmlPath.bak" -Force -ErrorAction SilentlyContinue
         $content = $content -replace 'repo:\s*opencode', 'repo: block-opencode-update'
         Set-Content -Path $updateYmlPath -Value $content -Force -ErrorAction SilentlyContinue
-        Write-Step "5/6" "宸蹭慨鏀?app-update.yml(鍘熸枃浠跺浠戒负 .bak)"
+        Write-Step "5/6" "已修改 app-update.yml（原文件备份为 .bak）"
     } else {
-        Write-Step "5/6" "app-update.yml 鏃犻渶淇敼銆?
+        Write-Step "5/6" "app-update.yml 无需修改。"
     }
 } else {
-    Write-Step "5/6" "app-update.yml 涓嶅瓨鍦紝璺宠繃銆?
+    Write-Step "5/6" "app-update.yml 不存在，跳过。"
 }
 
-# 5b. 娓呯┖ pending 鐩綍
+# 5b. 清空 pending 目录
 $pendingDir = "$env:LOCALAPPDATA\@opencode-aidesktop-updater\pending"
 if (Test-Path $pendingDir) {
     Remove-Item "$pendingDir\*" -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Step "5/6" "宸叉竻绌哄緟鏇存柊鐩綍: ${pendingDir}"
+    Write-Step "5/6" "已清空待更新目录: ${pendingDir}"
 } else {
-    Write-Step "5/6" "寰呮洿鏂扮洰褰曚笉瀛樺湪锛岃烦杩囥€?
+    Write-Step "5/6" "待更新目录不存在，跳过。"
 }
 
-# 5c. 鍒犻櫎 updater 鐩綍
+# 5c. 删除 updater 目录
 $updaterDir = "$env:APPDATA\ai.opencode.desktop\opencode.updater"
 if (Test-Path $updaterDir) {
     Remove-Item $updaterDir -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Step "5/6" "宸插垹闄?updater: ${updaterDir}"
+    Write-Step "5/6" "已删除 updater: ${updaterDir}"
 } else {
-    Write-Step "5/6" "updater 鐩綍涓嶅瓨鍦紝璺宠繃銆?
+    Write-Step "5/6" "updater 目录不存在，跳过。"
 }
 
-# ---------- 姝ラ 6锛氭敹灏鹃獙璇?----------
-Write-Step "6/6" "鏀跺熬楠岃瘉..."
+# ---------- 步骤 6：收尾验证 ----------
+Write-Step "6/6" "收尾验证..."
 
 $exePath = "$env:LOCALAPPDATA\Programs\@opencode-aidesktop\OpenCode.exe"
 if (Test-Path $exePath) {
     try {
         $version = (Get-Item $exePath).VersionInfo.FileVersion
-        Write-Step "6/6" "OpenCode 鐗堟湰: $version"
+        Write-Step "6/6" "OpenCode 版本: $version"
         if ($version -match '1\.17\.20') {
-            Write-Host "[瀹屾垚] 鎭㈠鎴愬姛锛佸綋鍓嶇増鏈负 ${version}" -ForegroundColor Green
+            Write-Host "[完成] 恢复成功！当前版本为 ${version}" -ForegroundColor Green
         } else {
-            Write-Host "[璀﹀憡] 鐗堟湰涓嶅尮閰?鏈熸湜 1.17.20锛屽疄闄?${version})锛岃妫€鏌ュ畨瑁呮楠ゃ€? -ForegroundColor Yellow
+            Write-Host "[警告] 版本不匹配：期望 1.17.20，实际 ${version}），请检查安装步骤。" -ForegroundColor Yellow
         }
     } catch {
-        Write-Host "[璀﹀憡] 鏃犳硶璇诲彇鐗堟湰淇℃伅銆? -ForegroundColor Yellow
+        Write-Host "[警告] 无法读取版本信息。" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "[璀﹀憡] 鏈壘鍒?OpenCode.exe锛屽畨瑁呭彲鑳芥湭鎴愬姛銆? -ForegroundColor Yellow
+    Write-Host "[警告] 未找到 OpenCode.exe，安装可能未成功。" -ForegroundColor Yellow
 }
 
-# ---------- 鏁版嵁搴撲慨澶?-FixDatabase 鏃? ----------
+# ---------- 数据库修复（-FixDatabase 时） ----------
 if ($FixDatabase) {
     Write-Host ""
-    Write-Step "DB" "妫€娴嬪埌 -FixDatabase 鍙傛暟锛岃繘鍏ユ暟鎹簱淇娴佺▼..."
+    Write-Step "DB" "检测到 -FixDatabase 参数，进入数据库修复流程..."
     Invoke-DatabaseFix
 }
 
 Write-Host ""
-Write-Host "===== 涓嬩竴姝?=====" -ForegroundColor Cyan
-Write-Host "鍚姩 OpenCode 楠岃瘉锛?
-Write-Host "  1. 宸ヤ綔鍖哄彲鐢?
-Write-Host "  2. 澶?diffs 浼氳瘽涓嶅崱椤?
-Write-Host "  3. 鏇存柊妫€鏌ヨ繑鍥?404(琚樆鏂?"
-Write-Host "  4. 濡傞亣鍒?reading time 宕╂簝锛岃繍琛?fix-db-time-fields.py 淇鏁版嵁搴?
+Write-Host "===== 下一步 =====" -ForegroundColor Cyan
+Write-Host "启动 OpenCode 验证："
+Write-Host "  1. 工作区可用"
+Write-Host "  2. 多 diffs 会话不卡顿"
+Write-Host "  3. 更新检查返回 404（被阻断）"
+Write-Host "  4. 如遇到 reading time 崩溃，运行 fix-db-time-fields.py 修复数据库"
 Write-Host ""
 
 if ($script:ExitCode -ne 0) {
