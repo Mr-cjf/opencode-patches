@@ -11,14 +11,20 @@ opencode-patches/
 ├── README.md                       # This file
 ├── bundle-patch/                   # Patches applied to the packaged asar bundle
 │   ├── README.md
-│   ├── patch.sh                    # One-click asar patching script
-│   └── source-patch/               # Mirror of source-level patches (for inspection)
+│   ├── main-Cpm5Nopr.patched.js    # Patched renderer bundle file
+│   ├── header.json                 # app.asar header metadata
+│   ├── patch_bundle.py             # Auto-patching script
+│   ├── repack_asar.py              # Repack asar from extracted directory
+│   ├── extract_asar.py             # Extract files from app.asar
+│   ├── extract_asar2.py            # Alternative extraction (pickle format)
+│   ├── parse_asar.py               # Parse and inspect asar structure
+│   ├── extract_bundle.js           # Extract bundle using @electron/asar API
+│   └── verify_equivalence.js       # Behavioral equivalence verification
 ├── source-patch/                   # Source-level patches (git-friendly, human-readable)
 │   ├── README.md
-│   ├── v1.17.20-uniqueSummaryDiffs/
-│   │   └── uniqueSummaryDiffs.diff
-│   └── v1.17.20-database-time-fields/
-│       └── time-fields-compat.diff (SQL script)
+│   ├── rows.patch                  # Unified diff (git-apply compatible)
+│   ├── rows.ts.orig                # Original unmodified source
+│   └── rows.ts.patched             # Source with Set-based deduplication
 └── docs/
     ├── 01-root-cause.md            # Root-cause analysis of the unresponsive renderer
     ├── 02-official-fix.md          # Study of the official fix in v1.18.30
@@ -29,9 +35,9 @@ opencode-patches/
 
 ## Quick Start
 
-1. **Bundle patch** (recommended): Run `bundle-patch/patch.sh` to apply the uniqueSummaryDiffs fix directly to the asar bundle.
-2. **Source patch**: Inspect `source-patch/` for the raw diff against the v1.17.20 source tree.
-3. **Database fix**: If you downgraded from v1.18.x and see `Cannot read properties of undefined (reading 'time')`, apply the SQL script in `source-patch/v1.17.20-database-time-fields/`.
+1. **Bundle patch** (recommended): See `bundle-patch/README.md` for step-by-step instructions to apply the uniqueSummaryDiffs fix directly to the asar bundle using the Python/JS tooling provided.
+2. **Source patch**: See `source-patch/README.md` for the raw diff (`rows.patch`) against the v1.17.20 source tree, along with the original and patched TypeScript sources.
+3. **Database fix**: If you downgraded from v1.18.x and see `Cannot read properties of undefined (reading 'time')`, see `docs/05-database-time-field-fix.md`.
 4. **Environment**: See `docs/04-environment-notes.md` before patching — you may need to freeze auto-updates.
 
 ## English Summary
