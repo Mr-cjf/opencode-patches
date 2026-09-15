@@ -25,12 +25,18 @@ opencode-patches/
 │   ├── rows.patch                  # Unified diff (git-apply compatible)
 │   ├── rows.ts.orig                # Original unmodified source
 │   └── rows.ts.patched             # Source with Set-based deduplication
-└── docs/
-    ├── 01-root-cause.md            # Root-cause analysis of the unresponsive renderer
-    ├── 02-official-fix.md          # Study of the official fix in v1.18.30
-    ├── 03-benchmark.md             # Benchmark data and correctness tests
-    ├── 04-environment-notes.md     # Why v1.17.20 and how to freeze updates safely
-    └── 05-database-time-field-fix.md # SQL migration for time field after downgrade
+├── recovery/                       # One-click restore scripts (auto-download from Release)
+	│   ├── README.md
+	│   ├── restore.bat                 # Double-click to restore
+	│   ├── restore-opencode.ps1        # PowerShell automation
+	│   ├── fix-db-time-fields.py       # SQL migration for time field
+	│   └── checksums.txt               # Integrity verification
+	└── docs/
+	    ├── 01-root-cause.md            # Root-cause analysis of the unresponsive renderer
+	    ├── 02-official-fix.md          # Study of the official fix in v1.18.30
+	    ├── 03-benchmark.md             # Benchmark data and correctness tests
+	    ├── 04-environment-notes.md     # Why v1.17.20 and how to freeze updates safely
+	    └── 05-database-time-field-fix.md # SQL migration for time field after downgrade
 ```
 
 ## Quick Start
