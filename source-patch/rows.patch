@@ -1,0 +1,37 @@
+--- a/packages/app/src/pages/session/timeline/rows.ts	2026-09-15 11:50:13.431966400 +0800
++++ b/packages/app/src/pages/session/timeline/rows.ts	2026-09-15 11:50:31.318966900 +0800
+@@ -137,14 +137,7 @@
+ 
+     if (isActive && status === "retry") rows.push(new TimelineRow.Retry({ userMessageID: userMessage.id }))
+ 
+-    const diffs = (userMessage.summary?.diffs ?? [])
+-      .reduceRight<SummaryDiff[]>((result, diff) => {
+-        if (!isSummaryDiff(diff)) return result
+-        if (result.some((item) => item.file === diff.file)) return result
+-        result.push(diff)
+-        return result
+-      }, [])
+-      .reverse()
++    const diffs = uniqueSummaryDiffs(userMessage.summary?.diffs)
+     if (diffs.length > 0 && (status === "idle" || !isActive)) {
+       rows.push(
+         new TimelineRow.DiffSummary({
+@@ -173,6 +166,18 @@
+     return typeof value.file === "string"
+   }
+ 
++  function uniqueSummaryDiffs(diffs: SnapshotFileDiff[] | undefined): SummaryDiff[] {
++    const files = new Set<string>()
++    return (diffs ?? []).reduceRight<SummaryDiff[]>((result, diff) => {
++      if (!isSummaryDiff(diff)) return result
++      const file = diff.file
++      if (files.has(file)) return result
++      files.add(file)
++      result.push(diff)
++      return result
++    }, []).reverse()
++  }
++
+   function reasoningHeading(text: string) {
+     const markdown = text.replace(/\r\n?/g, "\n")
+     const html = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i)
