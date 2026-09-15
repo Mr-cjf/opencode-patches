@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     OpenCode 一键恢复到 1.17.20 版本（含补丁 asar + 冻结自动更新）
 .DESCRIPTION
@@ -32,6 +32,8 @@ $ExeFileName   = "opencode-desktop-win-x64-1.17.20.exe"
 $ZipFileName   = "app.asar.patched.zip"
 $ExpectedExeSize = 134784328
 $ExpectedZipSize = 39761484
+$ExpectedExeHash = "7cc70f63d21656714333123648db0fb9cf9bf0a71a095b53fc67d204d61d3cdf"
+$ExpectedZipHash = "6047d9c70db423345a06c30f350ca009e6c844b8d6c19b111e109277ddc84d32"
 
 # ---------- 辅助函数 ----------
 function Write-Step {
@@ -208,17 +210,15 @@ function Invoke-AutoDownload {
 function Invoke-HashCheck {
     Write-Step "校验" "正在校验文件哈希值..."
 
-    $checksumFile = "$PSScriptRoot\checksums.txt"
-    if (-not (Test-Path $checksumFile)) {
-        Write-Step "校验" "未找到 checksums.txt，跳过哈希校验。"
-        return $true
-    }
-
-    # 解析 checksums.txt（格式: <64hex> *<filename>）
+    # 读取 checksums.txt（如果存在），用于交叉验证
     $checksums = @{}
-    Get-Content $checksumFile | ForEach-Object {
-        if ($_ -match '^([a-fA-F0-9]{64})\s+\*(.+)$') {
-            $checksums[$matches[2]] = $matches[1].ToLower()
+    $checksumFile = "$PSScriptRoot\checksums.txt"
+    if (Test-Path $checksumFile) {
+        Write-Step "校验" "发现 checksums.txt，将做交叉验证..."
+        Get-Content $checksumFile | ForEach-Object {
+            if ($_ -match '^([a-fA-F0-9]{64})\s+\*(.+)$') {
+                $checksums[$matches[2]] = $matches[1].ToLower()
+            }
         }
     }
 
@@ -228,19 +228,26 @@ function Invoke-HashCheck {
     $exePath = "$PSScriptRoot\$ExeFileName"
     if (Test-Path $exePath) {
         $hash = (Get-FileHash $exePath -Algorithm SHA256).Hash.ToLower()
-        $expected = $checksums[$ExeFileName]
+        $expected = $ExpectedExeHash
         Write-Step "校验" "检查 ${ExeFileName}..."
-        if ($expected) {
-            if ($hash -eq $expected) {
-                Write-Host "  哈希匹配: ${hash}" -ForegroundColor Green
-            } else {
-                Write-Host "  哈希不匹配" -ForegroundColor Red
-                Write-Host "  期望: ${expected}" -ForegroundColor Red
-                Write-Host "  实际: ${hash}" -ForegroundColor Red
-                $allValid = $false
-            }
+
+        # 硬编码期望值校验
+        if ($hash -eq $expected) {
+            Write-Host "  哈希匹配: ${hash}" -ForegroundColor Green
         } else {
-            Write-Host "  未在 checksums.txt 中找到 ${ExeFileName} 的哈希，跳过校验。" -ForegroundColor Yellow
+            Write-Host "  哈希不匹配" -ForegroundColor Red
+            Write-Host "  期望(硬编码): ${expected}" -ForegroundColor Red
+            Write-Host "  实际: ${hash}" -ForegroundColor Red
+            $allValid = $false
+        }
+
+        # 交叉验证（checksums.txt 存在时）
+        $chkExpected = $checksums[$ExeFileName]
+        if ($chkExpected -and $hash -ne $chkExpected) {
+            Write-Host "  [交叉验证失败] checksums.txt 中哈希不一致!" -ForegroundColor Red
+            Write-Host "  硬编码: ${expected}" -ForegroundColor Red
+            Write-Host "  checksums.txt: ${chkExpected}" -ForegroundColor Red
+            $allValid = $false
         }
     }
 
@@ -248,19 +255,26 @@ function Invoke-HashCheck {
     $zipPath = "$PSScriptRoot\$ZipFileName"
     if (Test-Path $zipPath) {
         $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
-        $expected = $checksums[$ZipFileName]
+        $expected = $ExpectedZipHash
         Write-Step "校验" "检查 ${ZipFileName}..."
-        if ($expected) {
-            if ($hash -eq $expected) {
-                Write-Host "  哈希匹配: ${hash}" -ForegroundColor Green
-            } else {
-                Write-Host "  哈希不匹配" -ForegroundColor Red
-                Write-Host "  期望: ${expected}" -ForegroundColor Red
-                Write-Host "  实际: ${hash}" -ForegroundColor Red
-                $allValid = $false
-            }
+
+        # 硬编码期望值校验
+        if ($hash -eq $expected) {
+            Write-Host "  哈希匹配: ${hash}" -ForegroundColor Green
         } else {
-            Write-Host "  未在 checksums.txt 中找到 ${ZipFileName} 的哈希，跳过校验。" -ForegroundColor Yellow
+            Write-Host "  哈希不匹配" -ForegroundColor Red
+            Write-Host "  期望(硬编码): ${expected}" -ForegroundColor Red
+            Write-Host "  实际: ${hash}" -ForegroundColor Red
+            $allValid = $false
+        }
+
+        # 交叉验证（checksums.txt 存在时）
+        $chkExpected = $checksums[$ZipFileName]
+        if ($chkExpected -and $hash -ne $chkExpected) {
+            Write-Host "  [交叉验证失败] checksums.txt 中哈希不一致!" -ForegroundColor Red
+            Write-Host "  硬编码: ${expected}" -ForegroundColor Red
+            Write-Host "  checksums.txt: ${chkExpected}" -ForegroundColor Red
+            $allValid = $false
         }
     }
 
